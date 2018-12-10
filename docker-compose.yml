@@ -1,0 +1,92 @@
+version: '2.0'
+services:
+    config-service:
+        image: config-service
+        container_name: config-service
+        ports:
+            - "8888:8888"
+        expose:
+            - 8888
+        networks:
+            - microservices-network
+        environment:
+            SPRING_APPLICATION_JSON: '{"spring": {"cloud": {"config": { "server":{"git":{"uri":"https://github.com/ziedYazidi/eservice-config"}}}}}}'
+
+    discovery-service:
+        image: discovery-service
+        container_name: discovery-service
+        expose:
+            - 8761
+        ports:
+            - "8761:8761"
+        depends_on:
+            - config-service
+        environment:
+            SPRING_APPLICATION_JSON: '{"spring": {"cloud": {"config": {"uri": "http://config-service:8888"}}}}'
+            EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+        entrypoint: /wait-for-it.sh config-service:8888 -t 300 --
+        command: java -jar /opt/lib//discovery-service-0.0.1-SNAPSHOT.jar
+        networks:
+            - microservices-network
+    
+    proxy-service:
+        image: proxy-service
+        container_name: proxy-service
+        expose:
+            - 9999
+        links:
+            - config-service:config-service
+            - discovery-service:discovery-service
+        ports:
+            - "9999:9999"
+        depends_on:
+            - config-service
+            - discovery-service
+        networks:
+            - microservices-network
+        environment:
+            SPRING_APPLICATION_JSON: '{"spring":{"cloud":{"config":{"uri":"http://config-service:8888"}}}}'
+        
+        entrypoint: /wait-for-it.sh discovery-service:8761 -t 300 --
+        command: java -jar /opt/lib/proxy-service-0.0.1-SNAPSHOT.jar
+
+    product-service-1:
+        image: product-service
+        container_name: product-service-1
+        expose:
+        - 8080
+        ports:
+        - "8080:8080"
+        depends_on:
+            - config-service
+            - discovery-service
+        links:
+            - config-service:config-service
+            - discovery-service:discovery-service
+        networks:
+            - microservices-network
+        environment:
+            SPRING_APPLICATION_JSON: '{"spring":{"cloud":{"config":{"uri":"http://config-service:8888"}}}}' 
+        entrypoint: /wait-for-it.sh proxy-service:9999 -t 300 --
+        command: java -jar /opt/lib/product-service-0.0.1-SNAPSHOT.jar
+    product-service-2:
+        image: product-service
+        container_name: product-service-2
+        ports:
+        - "8081:8080"
+        depends_on:
+            - config-service
+            - discovery-service
+        links:
+            - config-service:config-service
+            - discovery-service:discovery-service
+        networks:
+            - microservices-network
+        environment:
+            SPRING_APPLICATION_JSON: '{"spring":{"cloud":{"config":{"uri":"http://config-service:8888"}}}}' 
+        entrypoint: /wait-for-it.sh proxy-service:9999 -t 300 --
+        command: java -jar /opt/lib/product-service-0.0.1-SNAPSHOT.jar
+   
+networks:
+    microservices-network:
+        driver: bridge
